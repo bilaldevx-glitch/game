@@ -14,6 +14,7 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         backdrop-filter: blur(16px);
       }
+      canvas { display:block; }
     </style>
   </head>
   <body class="min-h-screen bg-slate-950 text-slate-100">
@@ -23,37 +24,27 @@
       <div class="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-emerald-500/20 blur-[120px]"></div>
     </div>
 
-    <main class="relative z-10 flex flex-col items-center px-6 py-8 gap-5">
-      <header class="text-center">
-        <h1 class="text-3xl md:text-4xl font-semibold tracking-wide text-cyan-200">Neon Flappy</h1>
-        <p class="text-slate-300 mt-2">Tap / click / press Space to fly.</p>
-      </header>
+    <main class="relative z-10 w-screen h-screen flex items-center justify-center">
+      <div class="panel glow w-full h-full">
+        <div class="relative w-full h-full">
+          <canvas id="game" class="w-full h-full"></canvas>
 
-      <section class="panel glow rounded-2xl p-4 w-full max-w-3xl">
-        <div class="flex flex-wrap items-center justify-between gap-4 text-sm">
-          <div class="flex items-center gap-3">
+          <!-- HUD -->
+          <div class="absolute top-4 left-4 flex gap-3 text-sm">
             <div class="px-3 py-2 rounded-lg bg-white/10">Score: <span id="score" class="text-cyan-200 font-semibold">0</span></div>
             <div class="px-3 py-2 rounded-lg bg-white/10">Best: <span id="best" class="text-fuchsia-200 font-semibold">0</span></div>
           </div>
-          <div class="flex items-center gap-2">
+
+          <!-- Buttons inside game -->
+          <div class="absolute top-4 right-4 flex gap-2">
             <button id="startBtn" class="px-4 py-2 rounded-lg bg-cyan-500/80 text-white hover:bg-cyan-400/80">Start</button>
             <button id="resetBtn" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-white/5">Reset</button>
+            <button id="soundBtn" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-white/5">Sound: On</button>
           </div>
+
+          <div id="status" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-300 bg-white/10 px-4 py-2 rounded-full">Press Start or Space to play</div>
         </div>
-      </section>
-
-      <section class="panel rounded-2xl p-4 w-full max-w-3xl">
-        <canvas id="game" width="720" height="420" class="w-full rounded-xl border border-white/10 bg-gradient-to-br from-slate-900/80 to-slate-800/60"></canvas>
-      </section>
-
-      <section class="panel rounded-2xl p-4 w-full max-w-3xl text-sm text-slate-300">
-        <h3 class="font-semibold text-slate-100">How to play</h3>
-        <ul class="list-disc ml-5 mt-2 space-y-1">
-          <li>Click or press Space to flap upward.</li>
-          <li>Pass through the glowing gaps to score.</li>
-          <li>Crash and it’s game over — beat your best.</li>
-        </ul>
-      </section>
+      </div>
     </main>
 
     <script>
@@ -61,8 +52,10 @@
       const ctx = canvas.getContext('2d');
       const scoreEl = document.getElementById('score');
       const bestEl = document.getElementById('best');
+      const statusEl = document.getElementById('status');
       const startBtn = document.getElementById('startBtn');
       const resetBtn = document.getElementById('resetBtn');
+      const soundBtn = document.getElementById('soundBtn');
 
       const bestScore = Number(localStorage.getItem('neon-flappy-best') || 0);
       bestEl.textContent = bestScore;
@@ -70,9 +63,10 @@
       let running = false;
       let score = 0;
       let frame = 0;
+      let soundOn = true;
 
       const bird = {
-        x: 120,
+        x: 140,
         y: 200,
         r: 16,
         vy: 0,
@@ -81,29 +75,49 @@
       };
 
       const pipes = [];
-      const pipeGap = 140;
-      const pipeWidth = 60;
-      const pipeSpeed = 2.6;
+      const pipeGap = 160;
+      const pipeWidth = 70;
+      const pipeSpeed = 2.8;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      function beep(freq, duration = 0.08, volume = 0.05) {
+        if (!soundOn) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.value = volume;
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      }
+
+      function resize() {
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+      }
+      window.addEventListener('resize', resize);
 
       function resetGame() {
         running = false;
         score = 0;
         frame = 0;
-        bird.y = 200;
+        bird.y = canvas.height / 2;
         bird.vy = 0;
         pipes.length = 0;
         scoreEl.textContent = score;
-        draw();
+        statusEl.textContent = 'Press Start or Space to play';
       }
 
       function spawnPipe() {
-        const gapTop = Math.random() * (canvas.height - pipeGap - 80) + 40;
-        pipes.push({ x: canvas.width + 20, gapTop, scored: false });
+        const gapTop = Math.random() * (canvas.height - pipeGap - 120) + 60;
+        pipes.push({ x: canvas.width + 40, gapTop, scored: false });
       }
 
       function flap() {
         if (!running) return;
         bird.vy = bird.lift;
+        beep(520);
       }
 
       function collide(pipe) {
@@ -128,10 +142,12 @@
             pipe.scored = true;
             score++;
             scoreEl.textContent = score;
+            statusEl.textContent = 'Nice!';
+            beep(760);
           }
         }
 
-        if (pipes.length && pipes[0].x + pipeWidth < -20) pipes.shift();
+        if (pipes.length && pipes[0].x + pipeWidth < -40) pipes.shift();
 
         if (bird.y - bird.r < 0 || bird.y + bird.r > canvas.height) {
           endGame();
@@ -147,6 +163,8 @@
 
       function endGame() {
         running = false;
+        statusEl.textContent = 'Game Over!';
+        beep(220, 0.2, 0.08);
         if (score > bestScore) {
           localStorage.setItem('neon-flappy-best', score);
           bestEl.textContent = score;
@@ -209,23 +227,36 @@
       startBtn.addEventListener('click', () => {
         if (!running) {
           running = true;
+          statusEl.textContent = 'Go!';
+          if (audioCtx.state === 'suspended') audioCtx.resume();
         }
       });
 
-      resetBtn.addEventListener('click', resetGame);
+      resetBtn.addEventListener('click', () => {
+        resetGame();
+      });
+
+      soundBtn.addEventListener('click', () => {
+        soundOn = !soundOn;
+        soundBtn.textContent = `Sound: ${soundOn ? 'On' : 'Off'}`;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      });
 
       window.addEventListener('keydown', (e) => {
         if (e.code === 'Space') {
           if (!running) running = true;
+          if (audioCtx.state === 'suspended') audioCtx.resume();
           flap();
         }
       });
 
       canvas.addEventListener('click', () => {
         if (!running) running = true;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
         flap();
       });
 
+      resize();
       resetGame();
       loop();
     </script>
