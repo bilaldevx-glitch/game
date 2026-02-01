@@ -42,7 +42,21 @@
             <button id="soundBtn" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-white/5">Sound: On</button>
           </div>
 
-          <div id="status" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-300 bg-white/10 px-4 py-2 rounded-full">Press Start or Space to play</div>
+          <!-- Overlays -->
+          <div id="startOverlay" class="absolute inset-0 flex items-center justify-center text-center">
+            <div class="panel glow rounded-2xl px-8 py-6">
+              <div class="text-2xl font-semibold text-cyan-200">Neon Flappy</div>
+              <div class="text-sm text-slate-300 mt-2">Press Start or Space to begin</div>
+            </div>
+          </div>
+          <div id="gameOverOverlay" class="absolute inset-0 hidden items-center justify-center text-center">
+            <div class="panel glow rounded-2xl px-8 py-6">
+              <div class="text-2xl font-semibold text-fuchsia-200">Game Over</div>
+              <div id="restartText" class="text-sm text-slate-300 mt-2">Restarting in 2...</div>
+            </div>
+          </div>
+
+          <div id="status" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-300 bg-white/10 px-4 py-2 rounded-full">Ready</div>
         </div>
       </div>
     </main>
@@ -56,28 +70,34 @@
       const startBtn = document.getElementById('startBtn');
       const resetBtn = document.getElementById('resetBtn');
       const soundBtn = document.getElementById('soundBtn');
+      const startOverlay = document.getElementById('startOverlay');
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const restartText = document.getElementById('restartText');
 
-      const bestScore = Number(localStorage.getItem('neon-flappy-best') || 0);
+      let bestScore = Number(localStorage.getItem('neon-flappy-best') || 0);
       bestEl.textContent = bestScore;
 
-      let running = false;
+      let state = 'start'; // start | playing | gameover
       let score = 0;
-      let frame = 0;
+      let lastTime = 0;
+      let timeAccumulator = 0;
       let soundOn = true;
+      let restartCountdown = 2;
 
       const bird = {
         x: 140,
         y: 200,
         r: 16,
         vy: 0,
-        gravity: 0.45,
-        lift: -7.5,
+        gravity: 900,
+        lift: -360,
       };
 
       const pipes = [];
-      const pipeGap = 160;
+      const particles = [];
+      const pipeGap = 170;
       const pipeWidth = 70;
-      const pipeSpeed = 2.8;
+      const pipeSpeed = 220;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       function beep(freq, duration = 0.08, volume = 0.05) {
@@ -95,28 +115,49 @@
       function resize() {
         canvas.width = canvas.clientWidth;
         canvas.height = canvas.clientHeight;
+        if (state !== 'playing') draw();
       }
       window.addEventListener('resize', resize);
 
       function resetGame() {
-        running = false;
         score = 0;
-        frame = 0;
         bird.y = canvas.height / 2;
         bird.vy = 0;
         pipes.length = 0;
+        particles.length = 0;
         scoreEl.textContent = score;
-        statusEl.textContent = 'Press Start or Space to play';
+        statusEl.textContent = 'Ready';
+      }
+
+      function startGame() {
+        state = 'playing';
+        startOverlay.classList.add('hidden');
+        gameOverOverlay.classList.add('hidden');
+        statusEl.textContent = 'Go!';
+        resetGame();
       }
 
       function spawnPipe() {
-        const gapTop = Math.random() * (canvas.height - pipeGap - 120) + 60;
+        const gapTop = Math.random() * (canvas.height - pipeGap - 140) + 70;
         pipes.push({ x: canvas.width + 40, gapTop, scored: false });
       }
 
+      function addParticles() {
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: bird.x - bird.r,
+            y: bird.y,
+            vx: -80 - Math.random() * 60,
+            vy: (Math.random() - 0.5) * 120,
+            life: 0.4 + Math.random() * 0.3,
+          });
+        }
+      }
+
       function flap() {
-        if (!running) return;
+        if (state !== 'playing') return;
         bird.vy = bird.lift;
+        addParticles();
         beep(520);
       }
 
@@ -128,16 +169,20 @@
         return hitTop || hitBottom;
       }
 
-      function update() {
-        if (!running) return;
-        frame++;
-        bird.vy += bird.gravity;
-        bird.y += bird.vy;
+      function update(dt) {
+        if (state !== 'playing') return;
 
-        if (frame % 90 === 0) spawnPipe();
+        bird.vy += bird.gravity * dt;
+        bird.y += bird.vy * dt;
+
+        timeAccumulator += dt;
+        if (timeAccumulator > 1.6) {
+          spawnPipe();
+          timeAccumulator = 0;
+        }
 
         for (const pipe of pipes) {
-          pipe.x -= pipeSpeed;
+          pipe.x -= pipeSpeed * dt;
           if (!pipe.scored && pipe.x + pipeWidth < bird.x) {
             pipe.scored = true;
             score++;
@@ -148,6 +193,13 @@
         }
 
         if (pipes.length && pipes[0].x + pipeWidth < -40) pipes.shift();
+
+        for (const p of particles) {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt;
+        }
+        while (particles.length && particles[0].life <= 0) particles.shift();
 
         if (bird.y - bird.r < 0 || bird.y + bird.r > canvas.height) {
           endGame();
@@ -162,13 +214,16 @@
       }
 
       function endGame() {
-        running = false;
+        state = 'gameover';
         statusEl.textContent = 'Game Over!';
         beep(220, 0.2, 0.08);
         if (score > bestScore) {
+          bestScore = score;
           localStorage.setItem('neon-flappy-best', score);
           bestEl.textContent = score;
         }
+        gameOverOverlay.classList.remove('hidden');
+        restartCountdown = 2;
       }
 
       function drawBackground() {
@@ -184,7 +239,10 @@
 
       function drawPipes() {
         for (const pipe of pipes) {
-          ctx.fillStyle = 'rgba(34,211,238,0.7)';
+          const pipeGradient = ctx.createLinearGradient(pipe.x, 0, pipe.x + pipeWidth, 0);
+          pipeGradient.addColorStop(0, 'rgba(34,211,238,0.8)');
+          pipeGradient.addColorStop(1, 'rgba(14,116,144,0.9)');
+          ctx.fillStyle = pipeGradient;
           ctx.shadowColor = 'rgba(34,211,238,0.6)';
           ctx.shadowBlur = 14;
           ctx.fillRect(pipe.x, 0, pipeWidth, pipe.gapTop);
@@ -193,47 +251,76 @@
         ctx.shadowBlur = 0;
       }
 
-      function drawBird() {
-        ctx.beginPath();
-        ctx.fillStyle = 'rgba(236,72,153,0.9)';
-        ctx.shadowColor = 'rgba(236,72,153,0.7)';
-        ctx.shadowBlur = 16;
-        ctx.arc(bird.x, bird.y, bird.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+      function drawParticles() {
+        ctx.fillStyle = 'rgba(34,211,238,0.8)';
+        for (const p of particles) {
+          ctx.globalAlpha = Math.max(p.life, 0);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
 
-      function drawText() {
-        if (running) return;
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.font = '20px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Press Start or Space to play', canvas.width / 2, canvas.height / 2);
+      function drawBird() {
+        ctx.save();
+        ctx.translate(bird.x, bird.y);
+        ctx.rotate(Math.min(Math.max(bird.vy / 600, -0.5), 0.5));
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(236,72,153,0.95)';
+        ctx.shadowColor = 'rgba(236,72,153,0.7)';
+        ctx.shadowBlur = 16;
+        ctx.arc(0, 0, bird.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // wing
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.ellipse(-4, 2, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // eye
+        ctx.beginPath();
+        ctx.fillStyle = '#0b1020';
+        ctx.arc(6, -4, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
 
       function draw() {
         drawBackground();
         drawPipes();
+        drawParticles();
         drawBird();
-        drawText();
       }
 
-      function loop() {
-        update();
+      function loop(timestamp) {
+        const dt = Math.min((timestamp - lastTime) / 1000, 0.03) || 0;
+        lastTime = timestamp;
+        update(dt);
         draw();
+
+        if (state === 'gameover') {
+          restartCountdown -= dt;
+          restartText.textContent = `Restarting in ${Math.ceil(restartCountdown)}...`;
+          if (restartCountdown <= 0) {
+            gameOverOverlay.classList.add('hidden');
+            startGame();
+          }
+        }
+
         requestAnimationFrame(loop);
       }
 
       startBtn.addEventListener('click', () => {
-        if (!running) {
-          running = true;
-          statusEl.textContent = 'Go!';
-          if (audioCtx.state === 'suspended') audioCtx.resume();
-        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        startGame();
       });
 
       resetBtn.addEventListener('click', () => {
+        state = 'start';
         resetGame();
+        startOverlay.classList.remove('hidden');
+        gameOverOverlay.classList.add('hidden');
       });
 
       soundBtn.addEventListener('click', () => {
@@ -244,21 +331,21 @@
 
       window.addEventListener('keydown', (e) => {
         if (e.code === 'Space') {
-          if (!running) running = true;
           if (audioCtx.state === 'suspended') audioCtx.resume();
+          if (state !== 'playing') startGame();
           flap();
         }
       });
 
       canvas.addEventListener('click', () => {
-        if (!running) running = true;
         if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (state !== 'playing') startGame();
         flap();
       });
 
       resize();
       resetGame();
-      loop();
+      requestAnimationFrame(loop);
     </script>
   </body>
 </html>
