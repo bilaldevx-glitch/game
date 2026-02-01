@@ -30,33 +30,33 @@
           <canvas id="game" class="w-full h-full"></canvas>
 
           <!-- HUD -->
-          <div class="absolute top-4 left-4 flex gap-3 text-sm">
+          <div class="absolute top-4 left-4 z-20 flex gap-3 text-sm pointer-events-none">
             <div class="px-3 py-2 rounded-lg bg-white/10">Score: <span id="score" class="text-cyan-200 font-semibold">0</span></div>
             <div class="px-3 py-2 rounded-lg bg-white/10">Best: <span id="best" class="text-fuchsia-200 font-semibold">0</span></div>
           </div>
 
           <!-- Buttons inside game -->
-          <div class="absolute top-4 right-4 flex gap-2">
+          <div class="absolute top-4 right-4 z-30 flex gap-2">
             <button id="startBtn" class="px-4 py-2 rounded-lg bg-cyan-500/80 text-white hover:bg-cyan-400/80">Start</button>
             <button id="resetBtn" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-white/5">Reset</button>
             <button id="soundBtn" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-white/5">Sound: On</button>
           </div>
 
           <!-- Overlays -->
-          <div id="startOverlay" class="absolute inset-0 flex items-center justify-center text-center">
+          <div id="startOverlay" class="absolute inset-0 z-10 flex items-center justify-center text-center">
             <div class="panel glow rounded-2xl px-8 py-6">
               <div class="text-2xl font-semibold text-cyan-200">Neon Flappy</div>
               <div class="text-sm text-slate-300 mt-2">Press Start or Space to begin</div>
             </div>
           </div>
-          <div id="gameOverOverlay" class="absolute inset-0 hidden items-center justify-center text-center">
+          <div id="gameOverOverlay" class="absolute inset-0 z-10 hidden items-center justify-center text-center">
             <div class="panel glow rounded-2xl px-8 py-6">
               <div class="text-2xl font-semibold text-fuchsia-200">Game Over</div>
               <div id="restartText" class="text-sm text-slate-300 mt-2">Restarting in 2...</div>
             </div>
           </div>
 
-          <div id="status" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-300 bg-white/10 px-4 py-2 rounded-full">Ready</div>
+          <div id="status" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 text-xs text-slate-300 bg-white/10 px-4 py-2 rounded-full pointer-events-none">Ready</div>
         </div>
       </div>
     </main>
@@ -311,19 +311,22 @@
         requestAnimationFrame(loop);
       }
 
-      startBtn.addEventListener('click', () => {
+      startBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (audioCtx.state === 'suspended') audioCtx.resume();
         startGame();
       });
 
-      resetBtn.addEventListener('click', () => {
+      resetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         state = 'start';
         resetGame();
         startOverlay.classList.remove('hidden');
         gameOverOverlay.classList.add('hidden');
       });
 
-      soundBtn.addEventListener('click', () => {
+      soundBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         soundOn = !soundOn;
         soundBtn.textContent = `Sound: ${soundOn ? 'On' : 'Off'}`;
         if (audioCtx.state === 'suspended') audioCtx.resume();
