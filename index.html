@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Neon Reflex — Mini Game</title>
+    <title>Neon Flappy</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .glow {
-        box-shadow: 0 0 20px rgba(34, 211, 238, 0.6), 0 0 40px rgba(217, 70, 239, 0.35);
+        box-shadow: 0 0 18px rgba(34, 211, 238, 0.7), 0 0 36px rgba(217, 70, 239, 0.35);
       }
       .panel {
         background: rgba(255, 255, 255, 0.06);
@@ -23,21 +23,17 @@
       <div class="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-emerald-500/20 blur-[120px]"></div>
     </div>
 
-    <main class="relative z-10 flex flex-col items-center px-6 py-10 gap-6">
+    <main class="relative z-10 flex flex-col items-center px-6 py-8 gap-5">
       <header class="text-center">
-        <h1 class="text-3xl md:text-4xl font-semibold tracking-wide text-cyan-200">Neon Reflex</h1>
-        <p class="text-slate-300 mt-2">Hit the glowing orbs before the timer ends.</p>
+        <h1 class="text-3xl md:text-4xl font-semibold tracking-wide text-cyan-200">Neon Flappy</h1>
+        <p class="text-slate-300 mt-2">Tap / click / press Space to fly.</p>
       </header>
 
-      <section class="panel glow rounded-2xl p-5 w-full max-w-4xl">
+      <section class="panel glow rounded-2xl p-4 w-full max-w-3xl">
         <div class="flex flex-wrap items-center justify-between gap-4 text-sm">
           <div class="flex items-center gap-3">
             <div class="px-3 py-2 rounded-lg bg-white/10">Score: <span id="score" class="text-cyan-200 font-semibold">0</span></div>
             <div class="px-3 py-2 rounded-lg bg-white/10">Best: <span id="best" class="text-fuchsia-200 font-semibold">0</span></div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="px-3 py-2 rounded-lg bg-white/10">Time: <span id="time" class="text-emerald-200 font-semibold">30</span>s</div>
-            <div class="px-3 py-2 rounded-lg bg-white/10">Streak: <span id="streak" class="text-amber-200 font-semibold">0</span></div>
           </div>
           <div class="flex items-center gap-2">
             <button id="startBtn" class="px-4 py-2 rounded-lg bg-cyan-500/80 text-white hover:bg-cyan-400/80">Start</button>
@@ -46,131 +42,192 @@
         </div>
       </section>
 
-      <section class="panel rounded-2xl p-6 w-full max-w-4xl">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-slate-200">Arena</h2>
-          <div id="status" class="text-xs text-slate-400">Click Start to begin</div>
-        </div>
-        <div id="arena" class="relative h-96 rounded-xl border border-white/10 bg-gradient-to-br from-slate-900/80 to-slate-800/60 overflow-hidden"></div>
+      <section class="panel rounded-2xl p-4 w-full max-w-3xl">
+        <canvas id="game" width="720" height="420" class="w-full rounded-xl border border-white/10 bg-gradient-to-br from-slate-900/80 to-slate-800/60"></canvas>
       </section>
 
-      <section class="panel rounded-2xl p-5 w-full max-w-4xl text-sm text-slate-300">
+      <section class="panel rounded-2xl p-4 w-full max-w-3xl text-sm text-slate-300">
         <h3 class="font-semibold text-slate-100">How to play</h3>
         <ul class="list-disc ml-5 mt-2 space-y-1">
-          <li>Click the neon orb as fast as you can.</li>
-          <li>Each hit adds 10 points + streak bonus.</li>
-          <li>Missed clicks reset your streak.</li>
+          <li>Click or press Space to flap upward.</li>
+          <li>Pass through the glowing gaps to score.</li>
+          <li>Crash and it’s game over — beat your best.</li>
         </ul>
       </section>
     </main>
 
     <script>
-      const arena = document.getElementById('arena');
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
       const scoreEl = document.getElementById('score');
-      const timeEl = document.getElementById('time');
       const bestEl = document.getElementById('best');
-      const streakEl = document.getElementById('streak');
-      const statusEl = document.getElementById('status');
       const startBtn = document.getElementById('startBtn');
       const resetBtn = document.getElementById('resetBtn');
 
-      let score = 0;
-      let timeLeft = 30;
-      let timer = null;
-      let orbTimer = null;
-      let streak = 0;
-      let active = false;
-
-      const bestScore = Number(localStorage.getItem('neon-best') || 0);
+      const bestScore = Number(localStorage.getItem('neon-flappy-best') || 0);
       bestEl.textContent = bestScore;
 
-      function rand(min, max) {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-      }
+      let running = false;
+      let score = 0;
+      let frame = 0;
 
-      function spawnOrb() {
-        if (!active) return;
-        arena.innerHTML = '';
-        const orb = document.createElement('button');
-        const size = rand(36, 64);
-        const x = rand(10, arena.clientWidth - size - 10);
-        const y = rand(10, arena.clientHeight - size - 10);
-        orb.className = 'absolute rounded-full bg-cyan-400/90 hover:bg-cyan-300/90 transition glow';
-        orb.style.width = `${size}px`;
-        orb.style.height = `${size}px`;
-        orb.style.left = `${x}px`;
-        orb.style.top = `${y}px`;
+      const bird = {
+        x: 120,
+        y: 200,
+        r: 16,
+        vy: 0,
+        gravity: 0.45,
+        lift: -7.5,
+      };
 
-        orb.addEventListener('click', (e) => {
-          e.stopPropagation();
-          streak += 1;
-          const bonus = Math.min(streak * 2, 20);
-          score += 10 + bonus;
-          scoreEl.textContent = score;
-          streakEl.textContent = streak;
-          statusEl.textContent = `Nice! +${10 + bonus}`;
-          spawnOrb();
-        });
+      const pipes = [];
+      const pipeGap = 140;
+      const pipeWidth = 60;
+      const pipeSpeed = 2.6;
 
-        arena.appendChild(orb);
-      }
-
-      function startGame() {
-        if (active) return;
-        active = true;
+      function resetGame() {
+        running = false;
         score = 0;
-        timeLeft = 30;
-        streak = 0;
+        frame = 0;
+        bird.y = 200;
+        bird.vy = 0;
+        pipes.length = 0;
         scoreEl.textContent = score;
-        timeEl.textContent = timeLeft;
-        streakEl.textContent = streak;
-        statusEl.textContent = 'Go!';
+        draw();
+      }
 
-        spawnOrb();
-        timer = setInterval(() => {
-          timeLeft -= 1;
-          timeEl.textContent = timeLeft;
-          if (timeLeft <= 0) endGame();
-        }, 1000);
+      function spawnPipe() {
+        const gapTop = Math.random() * (canvas.height - pipeGap - 80) + 40;
+        pipes.push({ x: canvas.width + 20, gapTop, scored: false });
+      }
 
-        orbTimer = setInterval(() => {
-          spawnOrb();
-        }, 1400);
+      function flap() {
+        if (!running) return;
+        bird.vy = bird.lift;
+      }
+
+      function collide(pipe) {
+        const withinX = bird.x + bird.r > pipe.x && bird.x - bird.r < pipe.x + pipeWidth;
+        if (!withinX) return false;
+        const hitTop = bird.y - bird.r < pipe.gapTop;
+        const hitBottom = bird.y + bird.r > pipe.gapTop + pipeGap;
+        return hitTop || hitBottom;
+      }
+
+      function update() {
+        if (!running) return;
+        frame++;
+        bird.vy += bird.gravity;
+        bird.y += bird.vy;
+
+        if (frame % 90 === 0) spawnPipe();
+
+        for (const pipe of pipes) {
+          pipe.x -= pipeSpeed;
+          if (!pipe.scored && pipe.x + pipeWidth < bird.x) {
+            pipe.scored = true;
+            score++;
+            scoreEl.textContent = score;
+          }
+        }
+
+        if (pipes.length && pipes[0].x + pipeWidth < -20) pipes.shift();
+
+        if (bird.y - bird.r < 0 || bird.y + bird.r > canvas.height) {
+          endGame();
+        }
+
+        for (const pipe of pipes) {
+          if (collide(pipe)) {
+            endGame();
+            break;
+          }
+        }
       }
 
       function endGame() {
-        active = false;
-        clearInterval(timer);
-        clearInterval(orbTimer);
-        arena.innerHTML = '';
-        statusEl.textContent = 'Time up!';
+        running = false;
         if (score > bestScore) {
-          localStorage.setItem('neon-best', score);
+          localStorage.setItem('neon-flappy-best', score);
           bestEl.textContent = score;
         }
       }
 
-      startBtn.addEventListener('click', startGame);
-      resetBtn.addEventListener('click', () => {
-        active = false;
-        clearInterval(timer);
-        clearInterval(orbTimer);
-        score = 0;
-        timeLeft = 30;
-        streak = 0;
-        scoreEl.textContent = score;
-        timeEl.textContent = timeLeft;
-        streakEl.textContent = streak;
-        statusEl.textContent = 'Reset done';
-        arena.innerHTML = '';
+      function drawBackground() {
+        ctx.fillStyle = '#0b1020';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, 'rgba(34,211,238,0.15)');
+        gradient.addColorStop(1, 'rgba(217,70,239,0.08)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function drawPipes() {
+        for (const pipe of pipes) {
+          ctx.fillStyle = 'rgba(34,211,238,0.7)';
+          ctx.shadowColor = 'rgba(34,211,238,0.6)';
+          ctx.shadowBlur = 14;
+          ctx.fillRect(pipe.x, 0, pipeWidth, pipe.gapTop);
+          ctx.fillRect(pipe.x, pipe.gapTop + pipeGap, pipeWidth, canvas.height);
+        }
+        ctx.shadowBlur = 0;
+      }
+
+      function drawBird() {
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(236,72,153,0.9)';
+        ctx.shadowColor = 'rgba(236,72,153,0.7)';
+        ctx.shadowBlur = 16;
+        ctx.arc(bird.x, bird.y, bird.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      function drawText() {
+        if (running) return;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.font = '20px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Press Start or Space to play', canvas.width / 2, canvas.height / 2);
+      }
+
+      function draw() {
+        drawBackground();
+        drawPipes();
+        drawBird();
+        drawText();
+      }
+
+      function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      startBtn.addEventListener('click', () => {
+        if (!running) {
+          running = true;
+        }
       });
 
-      arena.addEventListener('click', () => {
-        if (!active) return;
-        streak = 0;
-        streakEl.textContent = streak;
-        statusEl.textContent = 'Missed!';
+      resetBtn.addEventListener('click', resetGame);
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          if (!running) running = true;
+          flap();
+        }
       });
+
+      canvas.addEventListener('click', () => {
+        if (!running) running = true;
+        flap();
+      });
+
+      resetGame();
+      loop();
     </script>
   </body>
 </html>
